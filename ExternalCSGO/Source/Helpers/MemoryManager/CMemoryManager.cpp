@@ -32,8 +32,6 @@ bool CMemoryManager::Initialize() {
     }
 
     SetupOffsets();
-
-    printf("[+] All is fine\n");
 }
 
 ModuleInfo_t CMemoryManager::GetProcessModuleInfo(const char* szModuleName) {

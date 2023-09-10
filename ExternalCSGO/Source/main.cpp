@@ -38,16 +38,16 @@ int main() {
     std::vector<int> entList;
     entList.resize(0x10 * 64);
 
-    printf("Allo is fine. Starting render\n");
+    printf("[+] All is fine. Starting...\n");
     printf(" -- Panik key -> DELETE\n");
 
     while (!(GetAsyncKeyState(VK_DELETE) & 1)) {
-        auto pLocalPlayer =  GeniusPtr(clientBase + Offsets::LocalPlayer, 0x400);
+        auto pLocalPlayer = g_pMemoryManager->RPM(clientBase + Offsets::LocalPlayer);
 
-        if (!pLocalPlayer.IsValid())
+        if (!pLocalPlayer)
             continue;
 
-        auto iLocalTeam = pLocalPlayer.Get<std::int32_t>(Offsets::iTeamNum);
+        auto iLocalTeam = g_pMemoryManager->RPM(pLocalPlayer + Offsets::iTeamNum);
 
         g_pMemoryManager->RPM(clientBase + Offsets::EntityList, entList.data(), entList.size());
 

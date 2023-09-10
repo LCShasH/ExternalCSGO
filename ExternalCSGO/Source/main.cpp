@@ -3,102 +3,117 @@
 #include <vector>
 
 #include "Helpers/MemoryManager/CMemoryManager.hpp"
-#include "Helpers/SharedMemoryStream/SharedMemoryStream.hpp"
-
-struct vec3_t {
-    float x, y, z;
-};
-
-struct RenderTextureRect_t
-{
-	DWORD renderCommand;
-	int x0;
-	int y0;
-	int x1;
-	int y1;
-	float u0;
-	float v0;
-	float u1;
-	float v1;
-	float uk4;
-	DWORD colorStart;
-	DWORD colorEnd; // unused if gradient direction is set to none
-	DWORD gradientDirection;
-	DWORD textureId;
-};
-
-struct RenderTexture_t
-{
-    DWORD renderCommand;
-    DWORD textureId;
-    DWORD version;
-    BOOL fullUpdate;
-    DWORD size;
-    DWORD width;
-    DWORD height;
-    DWORD x;
-    DWORD y;
-};
-
-void DrawLine(int x1, int y1, int x2, int y2) {
-	RenderTextureRect_t drawTexturedRect =
-	{
-		3, // render command
-		0,
-		0,
-		400,
-		150,
-		0.0f,
-		0.0f,
-		1.0f,
-		1.0f,
-		1.0f,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		3, // none
-		1337
-	};
-}
+#include "Helpers/Overlay/Overlay.h"
+#include "Helpers/Math/Math.hpp"
+#include "Helpers/CoolPtr/CoolPtr.hpp"
 
 int main() {
-    g_pMemoryManager->Initialize();
+    if (!g_pMemoryManager->Initialize()) {
+        printf("[x] Failed to initialize memory system\n");
+        return -1;
+    }
+
+    auto dwPid = g_pMemoryManager->GetGamePid();
+    Overlay overlay(dwPid);
+
+    HWND hWnd = FindWindowA(0, "Counter-Strike: Global Offensive - Direct3D 9");
+
+    if(!hWnd) {
+        printf("[x] Failed to get game window\n");
+        return -1;
+    }
+
+    RECT rcClientRect;
+    GetClientRect(hWnd, &rcClientRect);
+
+    Math::g_Width = rcClientRect.right;
+    Math::g_Height = rcClientRect.bottom;
 
     auto clientMod = g_pMemoryManager->GetClientInfo();
+    auto engineMod = g_pMemoryManager->GetEngineInfo();
 
     auto clientBase = clientMod.dwBaseAddress;
+    auto enigneBase = engineMod.dwBaseAddress;
 
-    auto localPlayer = g_pMemoryManager->RPM(clientBase + Offsets::LocalPlayer);
     std::vector<int> entList;
     entList.resize(0x10 * 64);
 
-    while (true) {
+    printf("Allo is fine. Starting render\n");
+    printf(" -- Panik key -> DELETE\n");
+
+    while (!(GetAsyncKeyState(VK_DELETE) & 1)) {
+        auto pLocalPlayer =  GeniusPtr(clientBase + Offsets::LocalPlayer, 0x400);
+
+        if (!pLocalPlayer.IsValid())
+            continue;
+
+        auto iLocalTeam = pLocalPlayer.Get<std::int32_t>(Offsets::iTeamNum);
+
         g_pMemoryManager->RPM(clientBase + Offsets::EntityList, entList.data(), entList.size());
 
-        auto iLocalTeam = g_pMemoryManager->RPM(localPlayer + Offsets::iTeamNum);
+        VMatrix pViewMatrix = g_pMemoryManager->RPM< VMatrix >(clientBase + Offsets::ViewMatrix);
+
+        if (!overlay.BeginFrame())
+            continue;
 
         for (int i = 0; i < 64; i++) {
-            auto pPlayer = entList.at(i * 4);
+            auto pPlayer = GeniusPtr(entList.at(i * 4), 0x400);
 
-            if (!pPlayer)
+            if (!pPlayer.IsValid())
                 continue;
 
-            auto bIsDormant = g_pMemoryManager->RPM<bool>(pPlayer + Offsets::bDormant);
+            auto bIsDormant = pPlayer.Get<bool>(Offsets::bDormant);
 
             if (bIsDormant)
                 continue;
         
-            auto iTeamNum = g_pMemoryManager->RPM(localPlayer + Offsets::iTeamNum);
+            auto iTeamNum = pPlayer.Get<std::int32_t>(Offsets::iTeamNum);
 
             if (iTeamNum == iLocalTeam)
                 continue;
 
-            auto iHealth = g_pMemoryManager->RPM(localPlayer + Offsets::iHealth);
+            auto iHealth = pPlayer.Get<std::uint32_t>(Offsets::iHealth);
+
+            if (iHealth <= 0)
+                continue;
+
+            auto vecOrigin = pPlayer.Get< Vector >(Offsets::vecOrigin);
+
+            auto vecMins = pPlayer.Get< Vector >( Offsets::vecMins);
+            auto vecMaxs = pPlayer.Get< Vector >( Offsets::vecMaxs);
+
+            Math::BBox_t bBox;
+            if (Math::GetBoundingBox(vecOrigin, vecMins, vecMaxs, pViewMatrix, bBox)) {
+                // ESP box
+                overlay.DrawRect( bBox.x - 1, bBox.y - 1, bBox.w + 1, bBox.h + 1, 1, 0xFF000000);
+                overlay.DrawRect (bBox.x, bBox.y, bBox.w, bBox.h, 1, 0xFFFFFFFF);
+                overlay.DrawRect( bBox.x + 1, bBox.y + 1, bBox.w - 1, bBox.h - 1, 1, 0xFF000000);
+
+                // Health bar
+                // Bar
+                const auto flHealthPercent = iHealth / 100.f;
+                const auto flHeight = std::abs(bBox.h - bBox.y);
+
+                // Premium skeet.cc healthbar ( why not :) )
+                auto color = 0;
+                if (iHealth >= 25) {
+                    color = 0xA0D7C850;
+                    if (iHealth >= 50)
+                        color = 0xA050FF50;
+                }
+                else
+                    color = 0xA0FF3250;
+
+                overlay.DrawFilledRect(bBox.x - 5, bBox.y - 1, bBox.x - 3, bBox.h + 1, 0xFF000000);
+
+                overlay.DrawFilledRect(bBox.x - 5, bBox.h - (flHeight * flHealthPercent), bBox.x - 3, bBox.h + 1, color);
 
 
-
-            printf("%i/64 -> %p health: %i\n", i, pPlayer, iHealth);
-            
+                // Outlined rect
+                overlay.DrawRect( bBox.x - 6, bBox.y - 1, bBox.x - 3, bBox.h + 1, 1, 0xFF000000);
+            }
         }
+        overlay.EndFrame();
     }
 
     return 0;

@@ -19,8 +19,14 @@ bool CMemoryManager::Initialize() {
     }
 
     m_ClientModule = GetProcessModuleInfo("client.dll");
+    m_EngineModule = GetProcessModuleInfo("engine.dll");
 
     if (!m_ClientModule.dwBaseAddress) {
+        printf("[x] Failed to get client.dll module\n");
+        return false;
+    }
+
+    if (!m_EngineModule.dwBaseAddress) {
         printf("[x] Failed to get client.dll module\n");
         return false;
     }

@@ -31,6 +31,7 @@ public:
     }
 
     ModuleInfo_t GetClientInfo() { return m_ClientModule; }
+    ModuleInfo_t GetEngineInfo() { return m_EngineModule; }
     DWORD GetGamePid() { return m_dwGamePid; }
 
 private:
